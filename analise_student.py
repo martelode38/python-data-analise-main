@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Dict
 
 import numpy as np
 import pandas as pd
@@ -6,9 +7,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-# ============================================================
-# 1. Configuracoes iniciais
-# ============================================================
+# 1. configuracoes iniciais
 
 CAMINHO_DADOS = Path("data") / "student-mat.csv"
 PASTA_SAIDA = Path("outputs")
@@ -21,9 +20,7 @@ ROTULOS_STUDYTIME = {
 }
 
 
-# ============================================================
-# 2. Carregamento dos dados
-# ============================================================
+# 2. carregamento dos dados
 
 def carregar_dados(caminho: Path) -> pd.DataFrame:
     if not caminho.exists():
@@ -52,9 +49,7 @@ def mostrar_informacoes_iniciais(dados: pd.DataFrame) -> None:
     print(f"Colunas: {dados.shape[1]}")
 
 
-# ============================================================
-# 3. Selecao e verificacao das variaveis
-# ============================================================
+# 3. selecao e verificacao das variaveis
 
 def selecionar_variaveis(dados: pd.DataFrame) -> pd.DataFrame:
     colunas_necessarias = ["studytime", "G3"]
@@ -93,9 +88,7 @@ def limpar_dados(dados: pd.DataFrame) -> pd.DataFrame:
     return dados_limpos
 
 
-# ============================================================
-# 4. Estatistica descritiva
-# ============================================================
+# 4. estatistica descritiva
 
 def calcular_estatisticas(dados: pd.DataFrame) -> pd.DataFrame:
     estatisticas = pd.DataFrame(
@@ -122,9 +115,7 @@ def mostrar_estatisticas(estatisticas: pd.DataFrame) -> None:
     print(estatisticas.round(2))
 
 
-# ============================================================
-# 5. Visualizacoes iniciais
-# ============================================================
+# 5. visualizacoes iniciais
 
 def criar_visualizacoes(dados: pd.DataFrame) -> None:
     PASTA_SAIDA.mkdir(exist_ok=True)
@@ -170,9 +161,7 @@ def criar_visualizacoes(dados: pd.DataFrame) -> None:
     print("- barras_studytime.png")
 
 
-# ============================================================
-# 6. Interpretacoes automaticas
-# ============================================================
+# 6. interpretacoes automaticas
 
 def identificar_faixa_mais_comum(notas: pd.Series) -> str:
     faixas = pd.cut(
@@ -197,9 +186,117 @@ def mostrar_interpretacoes(dados: pd.DataFrame) -> None:
     print(f"Categoria de tempo de estudo mais frequente: {rotulo_studytime}")
 
 
-# ============================================================
-# 7. Execucao principal
-# ============================================================
+# 7. correlacao, dispersao, regressao linear e R2
+
+def classificar_forca_correlacao(correlacao: float) -> str:
+    valor_absoluto = abs(correlacao)
+
+    if valor_absoluto < 0.30:
+        return "fraca"
+    if valor_absoluto < 0.70:
+        return "moderada"
+    return "forte"
+
+
+def calcular_correlacao(dados: pd.DataFrame) -> float:
+    return dados["studytime"].corr(dados["G3"])
+
+
+def calcular_regressao_linear(dados: pd.DataFrame) -> Dict[str, float]:
+    x = dados["studytime"].to_numpy()
+    y = dados["G3"].to_numpy()
+
+    coeficiente_angular, intercepto = np.polyfit(x, y, 1)
+    valores_previstos = coeficiente_angular * x + intercepto
+
+    soma_quadrados_residuos = np.sum((y - valores_previstos) ** 2)
+    soma_quadrados_total = np.sum((y - y.mean()) ** 2)
+    r2 = 1 - (soma_quadrados_residuos / soma_quadrados_total)
+
+    return {
+        "coeficiente_angular": coeficiente_angular,
+        "intercepto": intercepto,
+        "r2": r2,
+    }
+
+
+def criar_grafico_dispersao_regressao(dados: pd.DataFrame, regressao: Dict[str, float]) -> None:
+    PASTA_SAIDA.mkdir(exist_ok=True)
+    sns.set_theme(style="whitegrid")
+
+    plt.figure(figsize=(8, 5))
+    sns.regplot(
+        data=dados,
+        x="studytime",
+        y="G3",
+        x_jitter=0.08,
+        scatter_kws={"alpha": 0.65, "color": "#3a7ca5"},
+        line_kws={"color": "#e07a5f", "label": f"Reta de regressao (R2 = {regressao['r2']:.3f})"},
+        ci=None,
+    )
+    plt.title("Dispersao entre tempo de estudo e nota final")
+    plt.xlabel("Tempo semanal de estudo (studytime)")
+    plt.ylabel("Nota final (G3)")
+    plt.xticks(
+        ticks=list(ROTULOS_STUDYTIME.keys()),
+        labels=[
+            "menos de 2h",
+            "2 a 5h",
+            "5 a 10h",
+            "mais de 10h",
+        ],
+    )
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(PASTA_SAIDA / "dispersao_regressao_studytime_g3.png", dpi=150)
+    plt.show()
+
+    print("- dispersao_regressao_studytime_g3.png")
+
+
+def mostrar_analise_correlacao_regressao(dados: pd.DataFrame) -> None:
+    correlacao = calcular_correlacao(dados)
+    regressao = calcular_regressao_linear(dados)
+    forca_correlacao = classificar_forca_correlacao(correlacao)
+
+    media_por_tempo_estudo = (
+        dados.groupby("studytime")["G3"]
+        .agg(["count", "mean", "median", "std"])
+        .rename(
+            columns={
+                "count": "quantidade",
+                "mean": "media_G3",
+                "median": "mediana_G3",
+                "std": "desvio_padrao_G3",
+            }
+        )
+    )
+    media_por_tempo_estudo.index = media_por_tempo_estudo.index.map(ROTULOS_STUDYTIME)
+
+    print("\n" + "=" * 60)
+    print("CORRELACAO ENTRE TEMPO DE ESTUDO E NOTA FINAL")
+    print("=" * 60)
+    print(f"Correlacao de Pearson: {correlacao:.3f}")
+    print(f"Forca da correlacao: {forca_correlacao}")
+
+    print("\nResumo das notas por categoria de tempo de estudo:")
+    print(media_por_tempo_estudo.round(2))
+
+    print("\n" + "=" * 60)
+    print("REGRESSAO LINEAR SIMPLES")
+    print("=" * 60)
+    print(
+        "Equacao estimada: "
+        f"G3 = {regressao['intercepto']:.3f} "
+        f"+ {regressao['coeficiente_angular']:.3f} * studytime"
+    )
+    print(f"R2: {regressao['r2']:.3f}")
+
+    print("\nGrafico de dispersao com regressao salvo na pasta outputs/:")
+    criar_grafico_dispersao_regressao(dados, regressao)
+
+
+# 8. execucao do pipeline
 
 def main() -> None:
     dados = carregar_dados(CAMINHO_DADOS)
@@ -214,6 +311,7 @@ def main() -> None:
     mostrar_estatisticas(estatisticas)
     criar_visualizacoes(dados_limpos)
     mostrar_interpretacoes(dados_limpos)
+    mostrar_analise_correlacao_regressao(dados_limpos)
 
 
 if __name__ == "__main__":
